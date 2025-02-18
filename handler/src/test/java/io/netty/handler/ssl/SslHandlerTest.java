@@ -47,6 +47,7 @@ import io.netty.handler.codec.ByteToMessageDecoder;
 import io.netty.handler.codec.CodecException;
 import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.UnsupportedMessageTypeException;
+import io.netty.handler.ssl.util.CachedSelfSignedCertificate;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
 import io.netty.util.AbstractReferenceCounted;
@@ -66,6 +67,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.function.Executable;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.SSLException;
+import javax.net.ssl.SSLProtocolException;
+import javax.net.ssl.X509ExtendedTrustManager;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.channels.ClosedChannelException;
@@ -80,21 +86,17 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLEngine;
-import javax.net.ssl.SSLException;
-import javax.net.ssl.SSLProtocolException;
-import javax.net.ssl.X509ExtendedTrustManager;
-
 import static io.netty.buffer.Unpooled.wrappedBuffer;
-import static org.hamcrest.CoreMatchers.*;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.CoreMatchers.instanceOf;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.not;
+import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -397,29 +399,25 @@ public class SslHandlerTest {
     public void testReleaseSslEngine() throws Exception {
         OpenSsl.ensureAvailability();
 
-        SelfSignedCertificate cert = new SelfSignedCertificate();
-        try {
-            SslContext sslContext = SslContextBuilder.forServer(cert.certificate(), cert.privateKey())
+        SelfSignedCertificate cert = CachedSelfSignedCertificate.getCachedCertificate();
+        SslContext sslContext = SslContextBuilder.forServer(cert.certificate(), cert.privateKey())
                 .sslProvider(SslProvider.OPENSSL)
                 .build();
-            try {
-                assertEquals(1, ((ReferenceCounted) sslContext).refCnt());
-                SSLEngine sslEngine = sslContext.newEngine(ByteBufAllocator.DEFAULT);
-                EmbeddedChannel ch = new EmbeddedChannel(new SslHandler(sslEngine));
+        try {
+            assertEquals(1, ((ReferenceCounted) sslContext).refCnt());
+            SSLEngine sslEngine = sslContext.newEngine(ByteBufAllocator.DEFAULT);
+            EmbeddedChannel ch = new EmbeddedChannel(new SslHandler(sslEngine));
 
-                assertEquals(2, ((ReferenceCounted) sslContext).refCnt());
-                assertEquals(1, ((ReferenceCounted) sslEngine).refCnt());
+            assertEquals(2, ((ReferenceCounted) sslContext).refCnt());
+            assertEquals(1, ((ReferenceCounted) sslEngine).refCnt());
 
-                assertTrue(ch.finishAndReleaseAll());
-                ch.close().syncUninterruptibly();
+            assertTrue(ch.finishAndReleaseAll());
+            ch.close().syncUninterruptibly();
 
-                assertEquals(1, ((ReferenceCounted) sslContext).refCnt());
-                assertEquals(0, ((ReferenceCounted) sslEngine).refCnt());
-            } finally {
-                ReferenceCountUtil.release(sslContext);
-            }
+            assertEquals(1, ((ReferenceCounted) sslContext).refCnt());
+            assertEquals(0, ((ReferenceCounted) sslEngine).refCnt());
         } finally {
-            cert.delete();
+            ReferenceCountUtil.release(sslContext);
         }
     }
 
@@ -488,7 +486,7 @@ public class SslHandlerTest {
                     .handler(newHandler(SslContextBuilder.forClient().trustManager(
                             InsecureTrustManagerFactory.INSTANCE).build(), clientPromise));
 
-            SelfSignedCertificate ssc = new SelfSignedCertificate();
+            SelfSignedCertificate ssc = CachedSelfSignedCertificate.getCachedCertificate();
             final Promise<Void> serverPromise = group.next().newPromise();
             ServerBootstrap serverBootstrap = new ServerBootstrap()
                     .group(group, group)
@@ -601,7 +599,7 @@ public class SslHandlerTest {
     @Test
     @Timeout(value = 5000, unit = TimeUnit.MILLISECONDS)
     public void testHandshakeFailBeforeWritePromise() throws Exception {
-        SelfSignedCertificate ssc = new SelfSignedCertificate();
+        SelfSignedCertificate ssc = CachedSelfSignedCertificate.getCachedCertificate();
         final SslContext sslServerCtx = SslContextBuilder.forServer(ssc.certificate(), ssc.privateKey()).build();
         final CountDownLatch latch = new CountDownLatch(2);
         final CountDownLatch latch2 = new CountDownLatch(2);
@@ -694,7 +692,7 @@ public class SslHandlerTest {
 
     @Test
     public void writingReadOnlyBufferDoesNotBreakAggregation() throws Exception {
-        SelfSignedCertificate ssc = new SelfSignedCertificate();
+        SelfSignedCertificate ssc = CachedSelfSignedCertificate.getCachedCertificate();
 
         final SslContext sslServerCtx = SslContextBuilder.forServer(ssc.certificate(), ssc.privateKey()).build();
 
@@ -772,7 +770,7 @@ public class SslHandlerTest {
                 .trustManager(new SelfSignedCertificate().cert())
                 .build();
 
-        EventLoopGroup group = new NioEventLoopGroup(1);
+        EventLoopGroup group = new DefaultEventLoopGroup(1);
         Channel sc = null;
         Channel cc = null;
         try {
@@ -1003,7 +1001,7 @@ public class SslHandlerTest {
 
     @Test
     public void testHandshakeWithExecutorJDK() throws Throwable {
-        ExecutorService executorService = Executors.newCachedThreadPool();
+        DelayingExecutor executorService = new DelayingExecutor();
         try {
             testHandshakeWithExecutor(executorService, SslProvider.JDK, false);
         } finally {
@@ -1032,7 +1030,7 @@ public class SslHandlerTest {
     @Test
     public void testHandshakeWithExecutorOpenSsl() throws Throwable {
         OpenSsl.ensureAvailability();
-        ExecutorService executorService = Executors.newCachedThreadPool();
+        DelayingExecutor executorService = new DelayingExecutor();
         try {
             testHandshakeWithExecutor(executorService, SslProvider.OPENSSL, false);
         } finally {
@@ -1057,7 +1055,7 @@ public class SslHandlerTest {
 
     @Test
     public void testHandshakeMTLSWithExecutorJDK() throws Throwable {
-        ExecutorService executorService = Executors.newCachedThreadPool();
+        DelayingExecutor executorService = new DelayingExecutor();
         try {
             testHandshakeWithExecutor(executorService, SslProvider.JDK, true);
         } finally {
@@ -1086,7 +1084,7 @@ public class SslHandlerTest {
     @Test
     public void testHandshakeMTLSWithExecutorOpenSsl() throws Throwable {
         OpenSsl.ensureAvailability();
-        ExecutorService executorService = Executors.newCachedThreadPool();
+        DelayingExecutor executorService = new DelayingExecutor();
         try {
             testHandshakeWithExecutor(executorService, SslProvider.OPENSSL, true);
         } finally {
@@ -1096,7 +1094,7 @@ public class SslHandlerTest {
 
     private static void testHandshakeWithExecutor(Executor executor, SslProvider provider, boolean mtls)
             throws Throwable {
-        final SelfSignedCertificate cert = new SelfSignedCertificate();
+        final SelfSignedCertificate cert = CachedSelfSignedCertificate.getCachedCertificate();
         final SslContext sslClientCtx;
         final SslContext sslServerCtx;
         if (mtls) {
@@ -1193,7 +1191,7 @@ public class SslHandlerTest {
                 .trustManager(InsecureTrustManagerFactory.INSTANCE)
                 .sslProvider(SslProvider.JDK).build();
 
-        final SelfSignedCertificate cert = new SelfSignedCertificate();
+        final SelfSignedCertificate cert = CachedSelfSignedCertificate.getCachedCertificate();
         final SslContext sslServerCtx = SslContextBuilder.forServer(cert.key(), cert.cert())
                 .sslProvider(SslProvider.JDK).build();
 
@@ -1301,7 +1299,7 @@ public class SslHandlerTest {
         ((OpenSslContext) sslClientCtx).sessionContext()
                 .setSessionCacheEnabled(true);
 
-        final SelfSignedCertificate cert = new SelfSignedCertificate();
+        final SelfSignedCertificate cert = CachedSelfSignedCertificate.getCachedCertificate();
         final SslContext sslServerCtx = SslContextBuilder.forServer(cert.key(), cert.cert())
                 .sslProvider(provider)
                 .protocols(protocol)
@@ -1493,7 +1491,7 @@ public class SslHandlerTest {
                 })
                 .sslProvider(SslProvider.JDK).build();
 
-        final SelfSignedCertificate cert = new SelfSignedCertificate();
+        final SelfSignedCertificate cert = CachedSelfSignedCertificate.getCachedCertificate();
         final SslContext sslServerCtx = SslContextBuilder.forServer(cert.key(), cert.cert())
                 .sslProvider(SslProvider.JDK).build();
 
@@ -1605,7 +1603,7 @@ public class SslHandlerTest {
                 .ciphers(Collections.singleton(clientCipher))
                 .sslProvider(provider).build();
 
-        final SelfSignedCertificate cert = new SelfSignedCertificate();
+        final SelfSignedCertificate cert = CachedSelfSignedCertificate.getCachedCertificate();
         final SslContext sslServerCtx = SslContextBuilder.forServer(cert.key(), cert.cert())
                 .protocols(protocol)
                 .ciphers(Collections.singleton(serverCipher))
@@ -1686,6 +1684,31 @@ public class SslHandlerTest {
     }
 
     @Test
+    public void testIncorrectLength() throws SSLException {
+        final SelfSignedCertificate cert = CachedSelfSignedCertificate.getCachedCertificate();
+        final EmbeddedChannel channel = new EmbeddedChannel();
+        channel.pipeline().addLast(
+                SslContextBuilder.forServer(cert.key(), cert.cert())
+                        .sslProvider(SslProvider.JDK)
+                        .build()
+                        .newHandler(channel.alloc()));
+        final ByteBuf buf = channel.alloc().buffer(5);
+        buf.writeByte(0x0);
+        buf.writeByte(0x1);
+        buf.writeByte(0xfe);
+        buf.writeByte(0x87);
+        buf.writeByte(0x2);
+        DecoderException e = assertThrows(DecoderException.class, new Executable() {
+            @Override
+            public void execute() {
+                channel.writeInbound(buf);
+            }
+        });
+        assertThat(e.getCause(), instanceOf(NotSslRecordException.class));
+        assertTrue(channel.finishAndReleaseAll());
+    }
+
+    @Test
     public void testSslCompletionEventsTls12JDK() throws Exception {
         testSslCompletionEvents(SslProvider.JDK, SslProtocols.TLS_v1_2, true);
         testSslCompletionEvents(SslProvider.JDK, SslProtocols.TLS_v1_2, false);
@@ -1720,7 +1743,7 @@ public class SslHandlerTest {
                 .protocols(protocol)
                 .sslProvider(provider).build();
 
-        final SelfSignedCertificate cert = new SelfSignedCertificate();
+        final SelfSignedCertificate cert = CachedSelfSignedCertificate.getCachedCertificate();
         final SslContext sslServerCtx = SslContextBuilder.forServer(cert.key(), cert.cert())
                 .protocols(protocol)
                 .sslProvider(provider).build();

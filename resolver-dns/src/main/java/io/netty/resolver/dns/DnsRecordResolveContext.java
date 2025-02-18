@@ -28,14 +28,16 @@ import io.netty.util.concurrent.Promise;
 
 final class DnsRecordResolveContext extends DnsResolveContext<DnsRecord> {
 
-    DnsRecordResolveContext(DnsNameResolver parent, Channel channel, Promise<?> originalPromise, DnsQuestion question,
-                            DnsRecord[] additionals, DnsServerAddressStream nameServerAddrs, int allowedQueries) {
+    DnsRecordResolveContext(DnsNameResolver parent, Channel channel,
+                            Promise<?> originalPromise, DnsQuestion question, DnsRecord[] additionals,
+                            DnsServerAddressStream nameServerAddrs, int allowedQueries) {
         this(parent, channel, originalPromise, question.name(), question.dnsClass(),
              new DnsRecordType[] { question.type() },
              additionals, nameServerAddrs, allowedQueries);
     }
 
-    private DnsRecordResolveContext(DnsNameResolver parent, Channel channel, Promise<?> originalPromise,
+    private DnsRecordResolveContext(DnsNameResolver parent, Channel channel,
+                                    Promise<?> originalPromise,
                                     String hostname, int dnsClass, DnsRecordType[] expectedTypes,
                                     DnsRecord[] additionals,
                                     DnsServerAddressStream nameServerAddrs,
@@ -45,7 +47,8 @@ final class DnsRecordResolveContext extends DnsResolveContext<DnsRecord> {
     }
 
     @Override
-    DnsResolveContext<DnsRecord> newResolverContext(DnsNameResolver parent, Channel channel, Promise<?> originalPromise,
+    DnsResolveContext<DnsRecord> newResolverContext(DnsNameResolver parent, Channel channel,
+                                                    Promise<?> originalPromise,
                                                     String hostname,
                                                     int dnsClass, DnsRecordType[] expectedTypes,
                                                     DnsRecord[] additionals,

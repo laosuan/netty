@@ -34,8 +34,8 @@ final class DnsAddressResolveContext extends DnsResolveContext<InetAddress> {
     private final AuthoritativeDnsServerCache authoritativeDnsServerCache;
     private final boolean completeEarlyIfPossible;
 
-    DnsAddressResolveContext(DnsNameResolver parent, Channel channel, Promise<?> originalPromise,
-                             String hostname, DnsRecord[] additionals,
+    DnsAddressResolveContext(DnsNameResolver parent, Channel channel,
+                             Promise<?> originalPromise, String hostname, DnsRecord[] additionals,
                              DnsServerAddressStream nameServerAddrs, int allowedQueries, DnsCache resolveCache,
                              AuthoritativeDnsServerCache authoritativeDnsServerCache,
                              boolean completeEarlyIfPossible) {
@@ -53,8 +53,8 @@ final class DnsAddressResolveContext extends DnsResolveContext<InetAddress> {
                                                       int dnsClass, DnsRecordType[] expectedTypes,
                                                       DnsRecord[] additionals,
                                                       DnsServerAddressStream nameServerAddrs, int allowedQueries) {
-        return new DnsAddressResolveContext(parent, channel, originalPromise, hostname, additionals, nameServerAddrs,
-                allowedQueries, resolveCache, authoritativeDnsServerCache, completeEarlyIfPossible);
+        return new DnsAddressResolveContext(parent, channel, originalPromise, hostname, additionals,
+                nameServerAddrs, allowedQueries, resolveCache, authoritativeDnsServerCache, completeEarlyIfPossible);
     }
 
     @Override
@@ -82,7 +82,8 @@ final class DnsAddressResolveContext extends DnsResolveContext<InetAddress> {
     @Override
     void cache(String hostname, DnsRecord[] additionals,
                DnsRecord result, InetAddress convertedResult) {
-        resolveCache.cache(hostname, additionals, convertedResult, result.timeToLive(), channel().eventLoop());
+        resolveCache.cache(hostname, additionals, convertedResult, result.timeToLive(),
+                channel().eventLoop());
     }
 
     @Override
@@ -93,8 +94,8 @@ final class DnsAddressResolveContext extends DnsResolveContext<InetAddress> {
     @Override
     void doSearchDomainQuery(String hostname, Promise<List<InetAddress>> nextPromise) {
         // Query the cache for the hostname first and only do a query if we could not find it in the cache.
-        if (!DnsNameResolver.doResolveAllCached(
-                hostname, additionals, nextPromise, resolveCache, parent.resolvedInternetProtocolFamiliesUnsafe())) {
+        if (!DnsNameResolver.doResolveAllCached(hostname, additionals, nextPromise, resolveCache,
+                parent.searchDomains(), parent.ndots(), parent.resolvedInternetProtocolFamiliesUnsafe())) {
             super.doSearchDomainQuery(hostname, nextPromise);
         }
     }
